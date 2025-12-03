@@ -206,27 +206,68 @@ export async function getUserChats(userId) {
     }
 
     const chatsRef = collection(db, CHATS_COLLECTION);
-    const q = query(
-      chatsRef,
-      where('userId', '==', userId),
-      orderBy('updatedAt', 'desc')
-    );
     
-    const querySnapshot = await getDocs(q);
+    // Intentar consulta con índice compuesto
+    try {
+      const q = query(
+        chatsRef,
+        where('userId', '==', userId),
+        orderBy('updatedAt', 'desc')
+      );
+      
+      const querySnapshot = await getDocs(q);
 
-    const chats = [];
-    querySnapshot.forEach((doc) => {
-      const chatData = doc.data();
-      chats.push({
-        ...chatData,
-        createdAt: chatData.createdAt?.toDate?.()?.toISOString() || chatData.createdAt,
-        updatedAt: chatData.updatedAt?.toDate?.()?.toISOString() || chatData.updatedAt
+      const chats = [];
+      querySnapshot.forEach((doc) => {
+        const chatData = doc.data();
+        chats.push({
+          ...chatData,
+          createdAt: chatData.createdAt?.toDate?.()?.toISOString() || chatData.createdAt,
+          updatedAt: chatData.updatedAt?.toDate?.()?.toISOString() || chatData.updatedAt
+        });
       });
-    });
 
-    return chats;
+      return chats;
+    } catch (indexError) {
+      // Si el índice no existe aún, hacer consulta simple y ordenar en memoria
+      if (indexError.message?.includes('index')) {
+        console.warn('Índice no encontrado, usando consulta alternativa:', indexError.message);
+        
+        const q = query(
+          chatsRef,
+          where('userId', '==', userId)
+        );
+        
+        const querySnapshot = await getDocs(q);
+
+        const chats = [];
+        querySnapshot.forEach((doc) => {
+          const chatData = doc.data();
+          chats.push({
+            ...chatData,
+            createdAt: chatData.createdAt?.toDate?.()?.toISOString() || chatData.createdAt,
+            updatedAt: chatData.updatedAt?.toDate?.()?.toISOString() || chatData.updatedAt
+          });
+        });
+
+        // Ordenar en memoria por updatedAt descendente
+        chats.sort((a, b) => {
+          const dateA = new Date(a.updatedAt || a.createdAt || 0);
+          const dateB = new Date(b.updatedAt || b.createdAt || 0);
+          return dateB - dateA;
+        });
+
+        return chats;
+      }
+      throw indexError;
+    }
   } catch (error) {
     console.error('Error obteniendo chats del usuario:', error);
+    // Si no hay datos, retornar array vacío en lugar de lanzar error
+    if (error.message?.includes('index') || error.message?.includes('permission')) {
+      console.warn('Retornando array vacío debido a error de índice o permisos');
+      return [];
+    }
     throw new Error(`Error al obtener chats: ${error.message}`);
   }
 }
