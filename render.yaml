@@ -1,0 +1,17 @@
+# Configuración de OpenRender para CancerVidaBot
+# Backend proxy seguro para OpenAI API
+
+services:
+  - type: web
+    name: cancervida-bot-api
+    runtime: node
+    plan: free  # Cambia a 'starter' o 'standard' para producción
+    buildCommand: cd server && npm install
+    startCommand: cd server && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: OPENAI_API_KEY
+        sync: false  # Configurar manualmente en el dashboard de OpenRender
+    healthCheckPath: /health
+    # CORS configurado en el código
