@@ -11,7 +11,7 @@
  */
 
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
-const DEFAULT_MODEL = 'gpt-3.5-turbo'; // Modelo por defecto, puede cambiarse
+const DEFAULT_MODEL = 'gpt-4o-mini'; // Modelo por defecto
 
 /**
  * Determina si debe usarse el backend proxy
