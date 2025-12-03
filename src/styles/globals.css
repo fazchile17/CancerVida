@@ -60,5 +60,19 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
+  /* Responsive improvements */
+  @media (max-width: 640px) {
+    .message-bubble {
+      @apply max-w-[90%];
+    }
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .dark-mode {
+    @apply bg-gray-900 text-gray-100;
+  }
 }
 

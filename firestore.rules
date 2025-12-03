@@ -1,8 +1,30 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Por ahora, no se usa Firestore
-    // Estas reglas pueden expandirse si se necesita almacenar datos
+    // Modo pruebas: permitir todo (sin autenticación)
+    // TODO: Restringir reglas en producción
+    
+    // Usuarios
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+    
+    // Chats
+    match /chats/{chatId} {
+      allow read, write: if true;
+      
+      // Mensajes dentro de cada chat
+      match /messages/{messageId} {
+        allow read, write: if true;
+      }
+    }
+    
+    // Logs de riesgo
+    match /riskLogs/{logId} {
+      allow read, write: if true;
+    }
+    
+    // Regla por defecto (por seguridad, negar todo lo demás)
     match /{document=**} {
       allow read, write: if false;
     }

@@ -4,11 +4,16 @@ MVP funcional de un chatbot emocional diseñado para brindar apoyo a pacientes c
 
 ## 🚀 Características
 
-- **Chat UI moderna**: Interfaz tipo WhatsApp con diseño accesible
-- **Integración con LLM**: Uso de modelos preentrenados vía OpenAI
+- **Chat UI moderna**: Interfaz tipo WhatsApp con diseño accesible, sidebar de chats, modo oscuro
+- **Gestión de Usuarios**: Sistema completo de usuarios sin autenticación (modo pruebas)
+- **Multi-chat**: Cada usuario puede tener múltiples chats independientes
+- **Integración con LLM**: Uso de modelos preentrenados vía OpenAI (gpt-4o-mini)
 - **RAG ligero**: Sistema de recuperación de información (estructura lista, contenido por añadir)
 - **IA-RMF**: Framework de gestión de riesgos para evaluar y mitigar respuestas
-- **Backend seguro**: Proxy con Firebase Cloud Functions para proteger API keys
+- **Contexto Global**: La IA puede usar contexto de otros chats del usuario
+- **Persistencia Firestore**: Todos los datos se guardan en Firestore
+- **Dashboard Global**: Panel de administración con estadísticas completas
+- **Backend seguro**: Proxy con OpenRender para proteger API keys
 - **Hosting**: Despliegue en Firebase Hosting
 
 ## 📋 Requisitos Previos
@@ -34,19 +39,42 @@ cd ..
 
 ### 2. Configurar variables de entorno
 
-Crear un archivo `.env` en la raíz del proyecto:
+Crear un archivo `.env` en la raíz del proyecto con las siguientes variables:
 
 ```env
-# Opción 1: Usar backend proxy (recomendado)
-VITE_BACKEND_URL=https://tu-servicio.onrender.com
-VITE_OPENAI_MODEL=gpt-3.5-turbo
+# ============================================
+# CONFIGURACIÓN DE OPENAI / BACKEND
+# ============================================
 
-# Opción 2: Usar OpenAI directamente (menos seguro)
-# VITE_OPENAI_API_KEY=sk-...
-# VITE_OPENAI_MODEL=gpt-3.5-turbo
+# Opción 1: Backend proxy (RECOMENDADO)
+VITE_BACKEND_URL=https://cancervida.onrender.com
+VITE_OPENAI_MODEL=gpt-4o-mini
+
+# Opción 2: OpenAI directo (NO RECOMENDADO - solo desarrollo)
+# VITE_OPENAI_API_KEY=sk-tu-api-key-aqui
+# VITE_OPENAI_MODEL=gpt-4o-mini
+
+# ============================================
+# CONFIGURACIÓN DE FIREBASE (Requerido)
+# ============================================
+# NOTA: Estos valores ya están configurados por defecto en el código
+# Puedes omitirlos o usar estos valores específicos de tu proyecto
+
+VITE_FIREBASE_API_KEY=AIzaSyBWkhBllIRTVaIp5yqNYbqBd8e_yhVEKJE
+VITE_FIREBASE_AUTH_DOMAIN=cancervida-7db4b.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=cancervida-7db4b
+VITE_FIREBASE_STORAGE_BUCKET=cancervida-7db4b.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=422727359538
+VITE_FIREBASE_APP_ID=1:422727359538:web:1677d320ca800e38e1702b
+VITE_FIREBASE_MEASUREMENT_ID=G-QMSWPP3300
 ```
 
-**Nota**: Para producción, es recomendable usar el backend proxy (OpenRender) en lugar de exponer la API key en el cliente.
+**📋 Ver documentación completa**: Consulta `VARIABLES_ENTORNO.md` para más detalles sobre dónde obtener estos valores.
+
+**Nota**: 
+- Si usas `VITE_BACKEND_URL`, NO necesitas `VITE_OPENAI_API_KEY`
+- Todas las variables de Firebase se obtienen desde Firebase Console > Project Settings
+- El archivo `.env` NO debe committearse (ya está en `.gitignore`)
 
 ### 3. Configurar OpenRender (Backend)
 
@@ -56,7 +84,7 @@ VITE_OPENAI_MODEL=gpt-3.5-turbo
 4. Conecta tu repositorio
 5. Configura variable de entorno: `OPENAI_API_KEY=sk-...`
 
-### 4. Inicializar Firebase (si es la primera vez)
+### 4. Inicializar Firebase
 
 ```bash
 firebase login
@@ -65,8 +93,9 @@ firebase init
 
 Selecciona:
 - Hosting
-- Functions
-- Firestore (opcional)
+- Firestore (requerido para persistencia de datos)
+
+**Importante**: Crea la base de datos Firestore en modo pruebas desde la consola de Firebase.
 
 ## 🏃 Ejecutar en Desarrollo
 
@@ -141,17 +170,29 @@ npm run deploy:functions
 ├── src/
 │   ├── components/          # Componentes React
 │   │   ├── ChatWindow.jsx
+│   │   ├── ChatSidebar.jsx
 │   │   ├── MessageBubble.jsx
 │   │   ├── InputBox.jsx
 │   │   ├── LoadingDots.jsx
-│   │   └── RiskDashboard.jsx
+│   │   ├── RiskDashboard.jsx
+│   │   ├── GlobalDashboard.jsx
+│   │   ├── UserProfile.jsx
+│   │   └── UserList.jsx
 │   ├── services/            # Servicios principales
-│   │   ├── llmClient.js     # Cliente LLM (OpenAI)
-│   │   ├── ragEngine.js     # Motor RAG
-│   │   ├── iaRMF.js         # Framework de gestión de riesgos
-│   │   └── riskLog.js       # Sistema de logging de riesgos
+│   │   ├── firebaseConfig.js    # Configuración Firebase
+│   │   ├── llmClient.js         # Cliente LLM (OpenAI)
+│   │   ├── ragEngine.js         # Motor RAG
+│   │   ├── iaRMF.js             # Framework de gestión de riesgos
+│   │   ├── riskLog.js           # Sistema de logging de riesgos
+│   │   ├── userService.js       # Gestión de usuarios
+│   │   ├── chatService.js       # Gestión de chats
+│   │   ├── messageService.js    # Gestión de mensajes
+│   │   ├── userContextService.js # Contexto global del usuario
+│   │   └── statsService.js      # Estadísticas
 │   ├── context/             # Contexto React
-│   │   └── ChatContext.jsx
+│   │   ├── ChatContext.jsx
+│   │   ├── UserContext.jsx
+│   │   └── ThemeContext.jsx
 │   ├── rag/                 # Base de conocimiento (vacía)
 │   │   ├── embeddings.json
 │   │   └── documents.json
@@ -166,8 +207,10 @@ npm run deploy:functions
 │   ├── validation_template.md
 │   ├── documentation_template.md
 │   └── survey_template.md
-├── public/
+├── firestore.rules          # Reglas de seguridad Firestore
+├── firestore.indexes.json   # Índices Firestore
 ├── firebase.json
+├── render.yaml              # Configuración OpenRender
 ├── vite.config.js
 └── package.json
 ```
@@ -211,6 +254,10 @@ npm run lint
 - **Backend**: Usa OpenRender como proxy para proteger tu API key de OpenAI
 - **RAG**: El sistema RAG funciona en modo vacío hasta que se añadan los embeddings y documentos
 - **IA-RMF**: El framework de riesgos está activo y bloquea respuestas de alto riesgo automáticamente
+- **Firestore**: La base de datos debe crearse en modo pruebas desde la consola de Firebase
+- **Usuarios**: El sistema funciona sin autenticación (modo pruebas). Todos los usuarios pueden ver todo el contenido
+- **Multi-chat**: Cada usuario puede tener múltiples chats independientes con historial completo
+- **Dashboard Global**: Accesible desde el botón "Dashboard" en el header (modo pruebas: todos pueden ver)
 
 ## 🤝 Contribución
 

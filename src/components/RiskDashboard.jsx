@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { useUser } from '../context/UserContext';
 import {
   getRiskLogs,
   getLogsByRiskLevel,
   getRiskStatistics,
   exportRiskLog,
   downloadRiskLog,
-  clearRiskLogs
+  clearRiskLogs,
+  getRiskLogsFromFirestore
 } from '../services/riskLog';
 
 /**
@@ -13,33 +15,88 @@ import {
  * Modo admin para monitoreo y análisis de riesgos
  */
 export function RiskDashboard({ isOpen, onClose }) {
+  const { currentUser, users } = useUser();
   const [logs, setLogs] = useState([]);
   const [filteredLogs, setFilteredLogs] = useState([]);
   const [selectedRiskLevel, setSelectedRiskLevel] = useState('all');
+  const [selectedUserId, setSelectedUserId] = useState('all');
+  const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState(null);
+  const [useFirestore, setUseFirestore] = useState(true);
 
   useEffect(() => {
     if (isOpen) {
       loadLogs();
     }
-  }, [isOpen]);
+  }, [isOpen, useFirestore]);
 
   useEffect(() => {
     filterLogs();
-  }, [selectedRiskLevel, logs]);
+  }, [selectedRiskLevel, selectedUserId, logs]);
 
-  const loadLogs = () => {
-    const allLogs = getRiskLogs();
-    setLogs(allLogs);
-    setStats(getRiskStatistics());
+  const loadLogs = async () => {
+    setLoading(true);
+    try {
+      let allLogs = [];
+      
+      if (useFirestore) {
+        // Cargar desde Firestore
+        const userId = selectedUserId !== 'all' ? selectedUserId : null;
+        allLogs = await getRiskLogsFromFirestore(userId, null, selectedRiskLevel !== 'all' ? selectedRiskLevel : null);
+      } else {
+        // Cargar desde localStorage
+        allLogs = getRiskLogs();
+      }
+      
+      setLogs(allLogs);
+      calculateStats(allLogs);
+    } catch (error) {
+      console.error('Error cargando logs:', error);
+      // Fallback a localStorage
+      const localLogs = getRiskLogs();
+      setLogs(localLogs);
+      calculateStats(localLogs);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const calculateStats = (logList) => {
+    const stats = {
+      total: logList.length,
+      byLevel: { low: 0, medium: 0, high: 0 },
+      blocked: 0,
+      averageRiskScore: 0
+    };
+
+    let totalScore = 0;
+    logList.forEach(log => {
+      stats.byLevel[log.riskLevel] = (stats.byLevel[log.riskLevel] || 0) + 1;
+      if (log.wasBlocked) stats.blocked++;
+      totalScore += log.riskScore || 0;
+    });
+
+    if (logList.length > 0) {
+      stats.averageRiskScore = totalScore / logList.length;
+    }
+
+    setStats(stats);
   };
 
   const filterLogs = () => {
-    if (selectedRiskLevel === 'all') {
-      setFilteredLogs(logs);
-    } else {
-      setFilteredLogs(getLogsByRiskLevel(selectedRiskLevel));
+    let filtered = [...logs];
+
+    // Filtrar por nivel de riesgo
+    if (selectedRiskLevel !== 'all') {
+      filtered = filtered.filter(log => log.riskLevel === selectedRiskLevel);
     }
+
+    // Filtrar por usuario
+    if (selectedUserId !== 'all') {
+      filtered = filtered.filter(log => log.userId === selectedUserId);
+    }
+
+    setFilteredLogs(filtered);
   };
 
   const handleExport = (format) => {
@@ -124,7 +181,38 @@ export function RiskDashboard({ isOpen, onClose }) {
         )}
 
         {/* Filtros */}
-        <div className="px-6 py-3 border-b bg-white">
+        <div className="px-6 py-3 border-b bg-white space-y-3">
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-600">Fuente:</label>
+            <button
+              onClick={() => setUseFirestore(!useFirestore)}
+              className={`px-3 py-1 rounded text-sm ${
+                useFirestore
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-200 text-gray-700'
+              }`}
+            >
+              {useFirestore ? 'Firestore' : 'LocalStorage'}
+            </button>
+            {loading && <span className="text-sm text-gray-500">Cargando...</span>}
+          </div>
+          
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="text-sm text-gray-600">Usuario:</label>
+            <select
+              value={selectedUserId}
+              onChange={(e) => setSelectedUserId(e.target.value)}
+              className="px-3 py-1 border border-gray-300 rounded text-sm"
+            >
+              <option value="all">Todos</option>
+              {users.map(user => (
+                <option key={user.userId} value={user.userId}>
+                  {user.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="flex gap-2">
             <button
               onClick={() => setSelectedRiskLevel('all')}
@@ -177,9 +265,9 @@ export function RiskDashboard({ isOpen, onClose }) {
             </div>
           ) : (
             <div className="space-y-4">
-              {filteredLogs.map((log, index) => (
+              {filteredLogs.map((log) => (
                 <div
-                  key={index}
+                  key={log.logId || log.timestamp}
                   className={`border rounded-lg p-4 ${
                     log.riskLevel === 'high'
                       ? 'border-red-300 bg-red-50'

@@ -1,12 +1,16 @@
 /**
  * Sistema de logging de eventos de riesgo
  * 
- * Almacena eventos de evaluación de riesgo en localStorage
+ * Almacena eventos de evaluación de riesgo en localStorage y Firestore
  * para análisis posterior y auditoría.
  */
 
+import { collection, addDoc, getDocs, query, where, orderBy, serverTimestamp } from 'firebase/firestore';
+import { db } from './firebaseConfig';
+
 const STORAGE_KEY = 'cancervida_risk_logs';
 const MAX_LOGS = 1000; // Límite de logs en localStorage
+const RISK_LOGS_COLLECTION = 'riskLogs';
 
 /**
  * Estructura de un evento de riesgo
@@ -32,6 +36,8 @@ const MAX_LOGS = 1000; // Límite de logs en localStorage
  * @param {number} eventData.riskScore - Puntuación de riesgo
  * @param {boolean} eventData.wasBlocked - Si fue bloqueada
  * @param {string} eventData.finalResponse - Respuesta final
+ * @param {string} eventData.userId - ID del usuario (opcional)
+ * @param {string} eventData.chatId - ID del chat (opcional)
  */
 export function logRiskEvent(eventData) {
   try {
@@ -43,22 +49,26 @@ export function logRiskEvent(eventData) {
       issues: eventData.issues || [],
       riskScore: eventData.riskScore || 0,
       wasBlocked: eventData.wasBlocked || false,
-      finalResponse: eventData.finalResponse || ''
+      finalResponse: eventData.finalResponse || '',
+      userId: eventData.userId || '',
+      chatId: eventData.chatId || ''
     };
 
-    // Obtener logs existentes
+    // Guardar en localStorage (backup)
     const logs = getRiskLogs();
-
-    // Agregar nuevo evento al inicio
     logs.unshift(event);
-
-    // Limitar el número de logs
     if (logs.length > MAX_LOGS) {
       logs.splice(MAX_LOGS);
     }
-
-    // Guardar en localStorage
     localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
+
+    // Guardar en Firestore (si hay userId)
+    if (eventData.userId) {
+      logRiskEventToFirestore(eventData).catch(err => {
+        console.warn('Error guardando log en Firestore:', err);
+        // No es crítico, ya está en localStorage
+      });
+    }
 
     console.log('Risk event logged:', {
       riskLevel: event.riskLevel,
@@ -221,5 +231,113 @@ export function downloadRiskLog(format = 'json') {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+/**
+ * Guarda un evento de riesgo en Firestore
+ * 
+ * @param {Object} eventData - Datos del evento de riesgo
+ * @param {string} eventData.userId - ID del usuario
+ * @param {string} eventData.chatId - ID del chat
+ * @returns {Promise<void>}
+ */
+export async function logRiskEventToFirestore(eventData) {
+  try {
+    if (!eventData.userId) {
+      return; // No guardar si no hay userId
+    }
+
+    const riskLogRef = collection(db, RISK_LOGS_COLLECTION);
+    
+    const logData = {
+      userId: eventData.userId || '',
+      chatId: eventData.chatId || '',
+      userMessage: eventData.userMessage || '',
+      llmResponse: eventData.llmResponse || '',
+      riskLevel: eventData.riskLevel || 'unknown',
+      issues: eventData.issues || [],
+      riskScore: eventData.riskScore || 0,
+      wasBlocked: eventData.wasBlocked || false,
+      finalResponse: eventData.finalResponse || '',
+      timestamp: serverTimestamp()
+    };
+
+    await addDoc(riskLogRef, logData);
+  } catch (error) {
+    console.error('Error guardando log en Firestore:', error);
+    throw error;
+  }
+}
+
+/**
+ * Obtiene logs de riesgo desde Firestore
+ * 
+ * @param {string} userId - ID del usuario (opcional, filtra por usuario)
+ * @param {string} chatId - ID del chat (opcional, filtra por chat)
+ * @param {string} riskLevel - Nivel de riesgo (opcional, filtra por nivel)
+ * @returns {Promise<Array>} Array de eventos de riesgo
+ */
+export async function getRiskLogsFromFirestore(userId = null, chatId = null, riskLevel = null) {
+  try {
+    const riskLogsRef = collection(db, RISK_LOGS_COLLECTION);
+    let q = query(riskLogsRef, orderBy('timestamp', 'desc'));
+
+    // Aplicar filtros
+    if (userId) {
+      q = query(q, where('userId', '==', userId));
+    }
+    if (chatId) {
+      q = query(q, where('chatId', '==', chatId));
+    }
+    if (riskLevel) {
+      q = query(q, where('riskLevel', '==', riskLevel));
+    }
+
+    const querySnapshot = await getDocs(q);
+    const logs = [];
+
+    querySnapshot.forEach((doc) => {
+      const logData = doc.data();
+      logs.push({
+        logId: doc.id,
+        ...logData,
+        timestamp: logData.timestamp?.toDate?.()?.toISOString() || logData.timestamp
+      });
+    });
+
+    return logs;
+  } catch (error) {
+    console.error('Error obteniendo logs de Firestore:', error);
+    return [];
+  }
+}
+
+/**
+ * Sincroniza logs de localStorage a Firestore
+ * 
+ * @param {string} userId - ID del usuario
+ * @returns {Promise<void>}
+ */
+export async function syncLogsToFirestore(userId) {
+  try {
+    if (!userId) return;
+
+    const localLogs = getRiskLogs();
+    const unsyncedLogs = localLogs.filter(log => !log.syncedToFirestore);
+
+    for (const log of unsyncedLogs) {
+      try {
+        await logRiskEventToFirestore({
+          ...log,
+          userId: userId
+        });
+        // Marcar como sincronizado (opcional, se puede implementar)
+      } catch (err) {
+        console.warn('Error sincronizando log:', err);
+      }
+    }
+  } catch (error) {
+    console.error('Error sincronizando logs:', error);
+  }
 }
 

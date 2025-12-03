@@ -29,15 +29,16 @@ function shouldUseProxy() {
  * @param {string} systemPrompt - Prompt del sistema que define el comportamiento del bot
  * @param {string} userMessage - Mensaje del usuario
  * @param {Array} contextChunks - Chunks relevantes del RAG (opcional)
+ * @param {Array} globalContext - Contexto global del usuario (otros chats) (opcional)
  * @param {Function} onStream - Callback para respuestas en streaming (opcional)
  * @returns {Promise<string>} Respuesta del LLM
  */
-export async function sendMessage(systemPrompt, userMessage, contextChunks = [], onStream = null) {
+export async function sendMessage(systemPrompt, userMessage, contextChunks = [], globalContext = [], onStream = null) {
   // Usar proxy si está configurado, sino usar llamada directa
   if (shouldUseProxy()) {
-    return sendMessageViaProxy(systemPrompt, userMessage, contextChunks, onStream);
+    return sendMessageViaProxy(systemPrompt, userMessage, contextChunks, globalContext, onStream);
   } else {
-    return sendMessageDirect(systemPrompt, userMessage, contextChunks, onStream);
+    return sendMessageDirect(systemPrompt, userMessage, contextChunks, globalContext, onStream);
   }
 }
 
@@ -50,7 +51,7 @@ export async function sendMessage(systemPrompt, userMessage, contextChunks = [],
  * @param {Function} onStream - Callback para streaming
  * @returns {Promise<string>} Respuesta del LLM
  */
-async function sendMessageViaProxy(systemPrompt, userMessage, contextChunks = [], onStream = null) {
+async function sendMessageViaProxy(systemPrompt, userMessage, contextChunks = [], globalContext = [], onStream = null) {
   const backendUrl = import.meta.env.VITE_BACKEND_URL;
   
   if (!backendUrl) {
@@ -60,7 +61,14 @@ async function sendMessageViaProxy(systemPrompt, userMessage, contextChunks = []
   // Construir el contexto del RAG si hay chunks disponibles
   let contextText = '';
   if (contextChunks && contextChunks.length > 0) {
-    contextText = '\n\nContexto relevante:\n' + contextChunks.map(chunk => `- ${chunk.text || chunk}`).join('\n');
+    contextText = '\n\nContexto relevante (RAG):\n' + contextChunks.map(chunk => `- ${chunk.text || chunk}`).join('\n');
+  }
+
+  // Construir contexto global del usuario si está disponible
+  let globalContextText = '';
+  if (globalContext && globalContext.length > 0) {
+    globalContextText = '\n\nContexto de conversaciones anteriores:\n' + 
+      globalContext.map(ctx => `[${ctx.chatName || 'Chat anterior'}]: ${ctx.text}`).join('\n');
   }
 
   const messages = [
@@ -70,7 +78,7 @@ async function sendMessageViaProxy(systemPrompt, userMessage, contextChunks = []
     },
     {
       role: 'user',
-      content: userMessage + contextText
+      content: userMessage + contextText + globalContextText
     }
   ];
 
@@ -121,7 +129,7 @@ async function sendMessageViaProxy(systemPrompt, userMessage, contextChunks = []
  * @param {Function} onStream - Callback para streaming
  * @returns {Promise<string>} Respuesta del LLM
  */
-async function sendMessageDirect(systemPrompt, userMessage, contextChunks = [], onStream = null) {
+async function sendMessageDirect(systemPrompt, userMessage, contextChunks = [], globalContext = [], onStream = null) {
   const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
 
   if (!apiKey) {
@@ -131,7 +139,14 @@ async function sendMessageDirect(systemPrompt, userMessage, contextChunks = [], 
   // Construir el contexto del RAG si hay chunks disponibles
   let contextText = '';
   if (contextChunks && contextChunks.length > 0) {
-    contextText = '\n\nContexto relevante:\n' + contextChunks.map(chunk => `- ${chunk.text || chunk}`).join('\n');
+    contextText = '\n\nContexto relevante (RAG):\n' + contextChunks.map(chunk => `- ${chunk.text || chunk}`).join('\n');
+  }
+
+  // Construir contexto global del usuario si está disponible
+  let globalContextText = '';
+  if (globalContext && globalContext.length > 0) {
+    globalContextText = '\n\nContexto de conversaciones anteriores:\n' + 
+      globalContext.map(ctx => `[${ctx.chatName || 'Chat anterior'}]: ${ctx.text}`).join('\n');
   }
 
   const messages = [
@@ -141,7 +156,7 @@ async function sendMessageDirect(systemPrompt, userMessage, contextChunks = [], 
     },
     {
       role: 'user',
-      content: userMessage + contextText
+      content: userMessage + contextText + globalContextText
     }
   ];
 
